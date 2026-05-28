@@ -10,23 +10,42 @@ from app.config import settings
 _embeddings = None
 
 
-# ── Custom fastembed wrapper ─────────────────────────────────────────────────
-# langchain-community 0.2.x tiene un bug de Pydantic v1 en FastEmbedEmbeddings
-# (_model no está declarado con PrivateAttr, lo que levanta ValidationError).
-# Solución: usar fastembed.TextEmbedding directamente con un wrapper mínimo.
+# ── Embeddings via HuggingFace Inference API ─────────────────────────────────
+# Sin modelo local, sin ONNX Runtime → cabe en los 512 MB de Render free tier.
+# Modelo: sentence-transformers/all-MiniLM-L6-v2 (384 dims, gratis en HF)
 
-class _FastEmbedWrapper(Embeddings):
-    """Wrapper directo sobre fastembed.TextEmbedding compatible con LangChain."""
+class _HFEmbeddings(Embeddings):
+    """Llama a la HuggingFace Inference API para generar embeddings."""
 
-    def __init__(self, model_name: str = "BAAI/bge-small-en-v1.5"):
-        from fastembed import TextEmbedding
-        self._model = TextEmbedding(model_name=model_name)
+    _URL = (
+        "https://api-inference.huggingface.co"
+        "/pipeline/feature-extraction"
+        "/sentence-transformers/all-MiniLM-L6-v2"
+    )
+
+    def __init__(self, api_key: str = ""):
+        import httpx
+        self._client = httpx.Client(timeout=90.0)
+        self._headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+
+    def _call(self, texts: List[str]) -> List[List[float]]:
+        r = self._client.post(
+            self._URL,
+            json={"inputs": texts, "options": {"wait_for_model": True}},
+            headers=self._headers,
+        )
+        r.raise_for_status()
+        return r.json()
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        return [e.tolist() for e in self._model.embed(texts)]
+        """Procesa en lotes de 32 para no saturar la API."""
+        result = []
+        for i in range(0, len(texts), 32):
+            result.extend(self._call(texts[i : i + 32]))
+        return result
 
     def embed_query(self, text: str) -> List[float]:
-        return next(self._model.embed([text])).tolist()
+        return self._call([text])[0]
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -51,16 +70,14 @@ def _db_url() -> str:
 
 # ── Singletons ───────────────────────────────────────────────────────────────
 
-def get_embeddings() -> _FastEmbedWrapper:
+def get_embeddings() -> _HFEmbeddings:
     """
-    FastEmbed usa ONNX en lugar de PyTorch:
-    - Descarga el modelo en ~5 s (vs ~90 s con sentence-transformers)
-    - Usa ~80 MB de RAM (vs ~400 MB con torch)
-    - Sin dependencia de CUDA ni torch — ideal para Render free tier
+    Devuelve el cliente de embeddings (singleton).
+    Sin modelo local — solo un cliente HTTP liviano (~1 MB RAM).
     """
     global _embeddings
     if _embeddings is None:
-        _embeddings = _FastEmbedWrapper(model_name="BAAI/bge-small-en-v1.5")
+        _embeddings = _HFEmbeddings(api_key=settings.hf_api_key)
     return _embeddings
 
 

@@ -20,7 +20,8 @@ class Settings(BaseSettings):
     chunk_size: int = 512
     chunk_overlap: int = 64
     retrieval_k: int = 5
-    embeddings_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    # Token de HuggingFace (gratis en huggingface.co → Settings → Access Tokens)
+    hf_api_key: str = ""
 
     # ── Supabase ──────────────────────────────────────────────────────────────
     # URL del proyecto: https://<project-ref>.supabase.co

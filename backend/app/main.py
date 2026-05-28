@@ -13,14 +13,9 @@ from app.admin.router import router as admin_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Pre-carga el modelo de embeddings al iniciar el servidor.
-    Así Render no mata el proceso por inactividad durante la primera
-    petición, que era cuando se disparaba la descarga del modelo.
+    Embeddings via HuggingFace API — sin modelo local, sin pre-carga pesada.
+    El servidor arranca en segundos y usa ~200 MB RAM (dentro del free tier).
     """
-    from app.rag.pipeline import get_embeddings
-    loop = asyncio.get_event_loop()
-    # Pre-carga el modelo ONNX de embeddings (~5 s, ~80 MB RAM)
-    await loop.run_in_executor(None, get_embeddings)
     yield
 
 
