@@ -43,7 +43,6 @@ def get_embeddings() -> FastEmbedEmbeddings:
     if _embeddings is None:
         _embeddings = FastEmbedEmbeddings(
             model_name="BAAI/bge-small-en-v1.5",
-            max_length=512,
         )
     return _embeddings
 
