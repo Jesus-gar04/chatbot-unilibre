@@ -1,6 +1,7 @@
 import uuid
 import os
 import tempfile
+import traceback
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -88,7 +89,10 @@ async def upload_document(
         }
 
     except Exception as e:
-        # Si algo falla intentamos revertir lo que se haya guardado
+        # Log completo para diagnóstico en Render
+        print(f"[UPLOAD ERROR] {type(e).__name__}: {e}")
+        print(traceback.format_exc())
+        # Intentar revertir lo que se haya guardado
         try:
             delete_document_from_store(doc_id)
         except Exception:
