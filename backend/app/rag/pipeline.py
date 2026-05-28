@@ -2,7 +2,7 @@ import json
 from typing import List, AsyncGenerator
 
 from langchain_community.vectorstores import PGVector
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
 from langchain.schema import Document, HumanMessage
 
 from app.config import settings
@@ -32,13 +32,18 @@ def _db_url() -> str:
 
 # ── Singletons ───────────────────────────────────────────────────────────────
 
-def get_embeddings() -> HuggingFaceEmbeddings:
+def get_embeddings() -> FastEmbedEmbeddings:
+    """
+    FastEmbed usa ONNX en lugar de PyTorch:
+    - Descarga el modelo en ~5 s (vs ~90 s con sentence-transformers)
+    - Usa ~80 MB de RAM (vs ~400 MB con torch)
+    - Sin dependencia de CUDA ni torch — ideal para Render free tier
+    """
     global _embeddings
     if _embeddings is None:
-        _embeddings = HuggingFaceEmbeddings(
-            model_name=settings.embeddings_model,
-            model_kwargs={"device": "cpu"},
-            encode_kwargs={"normalize_embeddings": True},
+        _embeddings = FastEmbedEmbeddings(
+            model_name="BAAI/bge-small-en-v1.5",
+            max_length=512,
         )
     return _embeddings
 
