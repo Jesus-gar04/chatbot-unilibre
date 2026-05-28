@@ -2,12 +2,31 @@ import json
 from typing import List, AsyncGenerator
 
 from langchain_community.vectorstores import PGVector
-from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
 from langchain.schema import Document, HumanMessage
+from langchain.schema.embeddings import Embeddings
 
 from app.config import settings
 
 _embeddings = None
+
+
+# ── Custom fastembed wrapper ─────────────────────────────────────────────────
+# langchain-community 0.2.x tiene un bug de Pydantic v1 en FastEmbedEmbeddings
+# (_model no está declarado con PrivateAttr, lo que levanta ValidationError).
+# Solución: usar fastembed.TextEmbedding directamente con un wrapper mínimo.
+
+class _FastEmbedWrapper(Embeddings):
+    """Wrapper directo sobre fastembed.TextEmbedding compatible con LangChain."""
+
+    def __init__(self, model_name: str = "BAAI/bge-small-en-v1.5"):
+        from fastembed import TextEmbedding
+        self._model = TextEmbedding(model_name=model_name)
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        return [e.tolist() for e in self._model.embed(texts)]
+
+    def embed_query(self, text: str) -> List[float]:
+        return next(self._model.embed([text])).tolist()
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -32,7 +51,7 @@ def _db_url() -> str:
 
 # ── Singletons ───────────────────────────────────────────────────────────────
 
-def get_embeddings() -> FastEmbedEmbeddings:
+def get_embeddings() -> _FastEmbedWrapper:
     """
     FastEmbed usa ONNX en lugar de PyTorch:
     - Descarga el modelo en ~5 s (vs ~90 s con sentence-transformers)
@@ -41,9 +60,7 @@ def get_embeddings() -> FastEmbedEmbeddings:
     """
     global _embeddings
     if _embeddings is None:
-        _embeddings = FastEmbedEmbeddings(
-            model_name="BAAI/bge-small-en-v1.5",
-        )
+        _embeddings = _FastEmbedWrapper(model_name="BAAI/bge-small-en-v1.5")
     return _embeddings
 
 
