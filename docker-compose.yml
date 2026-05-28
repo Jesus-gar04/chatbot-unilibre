@@ -10,8 +10,9 @@ services:
     env_file: ./backend/.env
     ports:
       - "8000:8000"
-    volumes:
-      - backend-data:/app/data
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
