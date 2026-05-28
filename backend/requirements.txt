@@ -8,6 +8,7 @@ langchain==0.2.11
 langchain-community==0.2.10
 langchain-openai==0.1.19
 psycopg2-binary==2.9.9
+pgvector==0.3.2
 sqlalchemy==2.0.31
 supabase==2.7.2
 fastembed==0.3.4
