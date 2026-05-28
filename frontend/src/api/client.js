@@ -2,22 +2,29 @@ import axios from 'axios'
 
 const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
-export const api = axios.create({ baseURL: BASE_URL, timeout: 30000 })
+// Timeout general para peticiones normales (login, listar docs, etc.)
+export const api = axios.create({ baseURL: BASE_URL, timeout: 30_000 })
 
-// Attach Bearer token when present
+// Instancia separada para uploads: el backend necesita despertar en Render,
+// descargar el modelo de embeddings y procesar el documento — puede tardar
+// hasta 5 minutos en el primer uso o con PDFs grandes.
+export const uploadApi = axios.create({ baseURL: BASE_URL, timeout: 300_000 })
+
 export function setAuthToken(token) {
   if (token) {
     api.defaults.headers.common['Authorization'] = `Bearer ${token}`
+    uploadApi.defaults.headers.common['Authorization'] = `Bearer ${token}`
   } else {
     delete api.defaults.headers.common['Authorization']
+    delete uploadApi.defaults.headers.common['Authorization']
   }
 }
 
 /**
- * Stream a chat query via SSE-over-fetch (POST).
- * onToken(str) — called for each streamed token
- * onDone(sources[]) — called with source list when stream ends
- * onError(msg) — called on network / parse errors
+ * Stream chat via SSE-over-fetch (POST).
+ * onToken(str)    — token a token mientras el LLM genera
+ * onDone(sources) — cuando termina, con lista de fuentes
+ * onError(msg)    — ante cualquier fallo de red
  */
 export async function streamChat(query, history, onToken, onDone, onError) {
   try {
@@ -42,7 +49,7 @@ export async function streamChat(query, history, onToken, onDone, onError) {
 
       buffer += decoder.decode(value, { stream: true })
       const lines = buffer.split('\n')
-      buffer = lines.pop() // keep incomplete last line
+      buffer = lines.pop()
 
       for (const line of lines) {
         if (!line.startsWith('data: ')) continue
@@ -54,11 +61,11 @@ export async function streamChat(query, history, onToken, onDone, onError) {
             onToken(data.token)
           }
         } catch {
-          // malformed SSE line — skip
+          // línea SSE malformada — ignorar
         }
       }
     }
-  } catch (err) {
+  } catch {
     onError('No se pudo conectar con el servidor. Intente de nuevo.')
   }
 }
