@@ -17,9 +17,12 @@ async def lifespan(app: FastAPI):
     Así Render no mata el proceso por inactividad durante la primera
     petición, que era cuando se disparaba la descarga del modelo.
     """
-    from app.rag.pipeline import get_embeddings
+    from app.rag.pipeline import get_embeddings, get_vector_store
     loop = asyncio.get_event_loop()
+    # 1. Carga el modelo ONNX de embeddings (~5 s)
     await loop.run_in_executor(None, get_embeddings)
+    # 2. Inicializa PGVector: crea las tablas en Supabase si no existen
+    await loop.run_in_executor(None, get_vector_store)
     yield
 
 

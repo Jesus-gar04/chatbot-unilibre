@@ -8,6 +8,7 @@ from langchain.schema.embeddings import Embeddings
 from app.config import settings
 
 _embeddings = None
+_vector_store = None
 
 
 # ── Custom fastembed wrapper ─────────────────────────────────────────────────
@@ -68,13 +69,17 @@ def get_vector_store() -> PGVector:
     """
     PGVector crea automáticamente las tablas 'langchain_pg_collection' y
     'langchain_pg_embedding' en PostgreSQL la primera vez que se conecta.
+    Se cachea como singleton para reutilizar la conexión entre requests.
     """
-    return PGVector(
-        connection_string=_db_url(),
-        embedding_function=get_embeddings(),
-        collection_name="rag_unilibre",
-        pre_delete_collection=False,
-    )
+    global _vector_store
+    if _vector_store is None:
+        _vector_store = PGVector(
+            connection_string=_db_url(),
+            embedding_function=get_embeddings(),
+            collection_name="rag_unilibre",
+            pre_delete_collection=False,
+        )
+    return _vector_store
 
 
 def get_llm():
