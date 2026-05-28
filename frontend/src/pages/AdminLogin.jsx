@@ -3,18 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import useAuthStore from '../store/authStore'
 
-function TorchIcon({ className }) {
-  return (
-    <svg className={className} viewBox="0 0 32 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M16 2C12 9 8 14 10 21C12 27 16 24 16 24C16 24 20 27 22 21C24 14 20 9 16 2Z"
-        fill="currentColor" opacity="0.9"/>
-      <path d="M13 22H19V38H13V22Z" fill="currentColor"/>
-      <rect x="10" y="38" width="12" height="4" rx="2" fill="currentColor"/>
-      <rect x="8"  y="42" width="16" height="3" rx="1.5" fill="currentColor" opacity="0.6"/>
-    </svg>
-  )
-}
-
 export default function AdminLogin() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -51,17 +39,30 @@ export default function AdminLogin() {
   return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center px-4">
       <div className="w-full max-w-sm">
-        <div className="bg-white rounded-2xl shadow border border-gray-200 overflow-hidden">
 
-          {/* Banda institucional superior */}
-          <div className="bg-ul-700 px-8 py-6 flex flex-col items-center">
-            <TorchIcon className="w-10 h-14 text-white mb-3" />
-            <span className="text-white text-xs font-bold uppercase tracking-widest text-center leading-snug">
-              Universidad Libre<br />Seccional Barranquilla
-            </span>
+        <div className="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden">
+
+          {/* ── Cabecera oscura con escudo ── */}
+          <div className="bg-gray-950 px-8 pt-8 pb-6 flex flex-col items-center gap-3">
+            <img
+              src="/logo.png"
+              alt="Escudo Universidad Libre"
+              className="w-24 h-24 object-contain drop-shadow-xl"
+            />
+            <div className="text-center">
+              <p className="text-white text-sm font-bold tracking-wide leading-snug">
+                Universidad Libre
+              </p>
+              <p className="text-ul-400 text-xs font-semibold tracking-widest uppercase">
+                Seccional Barranquilla
+              </p>
+            </div>
           </div>
 
-          {/* Formulario */}
+          {/* ── Franja roja decorativa ── */}
+          <div className="h-1 bg-ul-700" />
+
+          {/* ── Formulario ── */}
           <div className="px-8 py-7">
             <div className="text-center mb-6">
               <h1 className="text-base font-bold text-gray-900">Secretaría Académica</h1>
@@ -101,6 +102,7 @@ export default function AdminLogin() {
                     onClick={() => setShowPwd((v) => !v)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
                     tabIndex={-1}
+                    aria-label={showPwd ? 'Ocultar contraseña' : 'Mostrar contraseña'}
                   >
                     {showPwd ? (
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -128,7 +130,7 @@ export default function AdminLogin() {
               <button
                 type="submit"
                 disabled={loading || !username || !password}
-                className="w-full py-2.5 bg-ul-700 hover:bg-ul-800 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition"
+                className="w-full py-2.5 bg-ul-700 hover:bg-ul-800 active:bg-ul-900 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg transition"
               >
                 {loading ? 'Verificando…' : 'Ingresar'}
               </button>
@@ -137,8 +139,9 @@ export default function AdminLogin() {
         </div>
 
         <p className="text-center text-xs text-gray-400 mt-4">
-          Universidad Libre Seccional Barranquilla · Sistema de Gestión Académica
+          © {new Date().getFullYear()} Universidad Libre Seccional Barranquilla
         </p>
+
       </div>
     </div>
   )

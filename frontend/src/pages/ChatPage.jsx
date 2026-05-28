@@ -4,19 +4,6 @@ import ChatInput from '../components/chat/ChatInput'
 import TypingIndicator from '../components/chat/TypingIndicator'
 import { streamChat } from '../api/client'
 
-// Antorcha SVG — símbolo de la Universidad Libre
-function TorchIcon({ className }) {
-  return (
-    <svg className={className} viewBox="0 0 32 48" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M16 2C12 9 8 14 10 21C12 27 16 24 16 24C16 24 20 27 22 21C24 14 20 9 16 2Z"
-        fill="currentColor" opacity="0.9"/>
-      <path d="M13 22H19V38H13V22Z" fill="currentColor"/>
-      <rect x="10" y="38" width="12" height="4" rx="2" fill="currentColor"/>
-      <rect x="8"  y="42" width="16" height="3" rx="1.5" fill="currentColor" opacity="0.6"/>
-    </svg>
-  )
-}
-
 const WELCOME = {
   role: 'assistant',
   content:
@@ -93,26 +80,32 @@ export default function ChatPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* Header */}
-      <header className="bg-white border-b border-gray-200 px-6 py-3 flex-shrink-0 shadow-sm">
-        <div className="max-w-[760px] mx-auto flex items-center justify-between">
+
+      {/* ── Header ── */}
+      <header className="bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
+        <div className="max-w-[760px] mx-auto px-4 py-3 flex items-center justify-between">
+
+          {/* Logo + nombre */}
           <div className="flex items-center gap-3">
-            {/* Logo institucional */}
-            <div className="w-10 h-10 rounded-lg bg-ul-700 flex items-center justify-center flex-shrink-0">
-              <TorchIcon className="w-6 h-8 text-white" />
-            </div>
+            <img
+              src="/logo.png"
+              alt="Escudo Universidad Libre"
+              className="w-12 h-12 object-contain drop-shadow-sm"
+            />
             <div>
-              <div className="text-[10px] font-bold text-ul-700 uppercase tracking-widest leading-none">
+              <p className="text-[10px] font-bold text-ul-700 uppercase tracking-widest leading-none mb-0.5">
                 Universidad Libre · Seccional Barranquilla
-              </div>
+              </p>
               <h1 className="text-base font-bold text-gray-900 leading-tight">
                 Asistente Virtual Académico
               </h1>
             </div>
           </div>
+
+          {/* Limpiar chat */}
           <button
             onClick={clearHistory}
-            className="text-xs text-gray-400 hover:text-gray-600 flex items-center gap-1.5 transition"
+            className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-600 transition"
           >
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -123,7 +116,7 @@ export default function ChatPage() {
         </div>
       </header>
 
-      {/* Messages */}
+      {/* ── Mensajes ── */}
       <main className="flex-1 overflow-y-auto px-4 py-6 scrollbar-thin">
         <div className="max-w-[760px] mx-auto">
           {messages.map((msg, i) => (
@@ -136,7 +129,7 @@ export default function ChatPage() {
         </div>
       </main>
 
-      {/* Input */}
+      {/* ── Input ── */}
       <footer className="bg-white border-t border-gray-200 px-4 py-4 flex-shrink-0">
         <div className="max-w-[760px] mx-auto">
           <ChatInput
@@ -146,11 +139,12 @@ export default function ChatPage() {
             disabled={streaming}
           />
           <p className="text-center text-xs text-gray-400 mt-2">
-            Las respuestas se basan exclusivamente en documentos oficiales cargados por la Secretaría.
-            · <span className="font-medium">Ciencia · Libertad · Criterio · Honestidad</span>
+            Las respuestas se basan exclusivamente en documentos oficiales cargados por la Secretaría.&nbsp;
+            <span className="font-medium text-gray-500">Scientia · Fons · Libertatis</span>
           </p>
         </div>
       </footer>
+
     </div>
   )
 }
