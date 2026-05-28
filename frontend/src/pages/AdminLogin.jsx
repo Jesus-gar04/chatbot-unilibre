@@ -42,8 +42,8 @@ export default function AdminLogin() {
 
         <div className="bg-white rounded-2xl shadow-lg border border-gray-200 overflow-hidden">
 
-          {/* ── Cabecera oscura con escudo ── */}
-          <div className="bg-gray-950 px-8 pt-8 pb-6 flex flex-col items-center gap-3">
+          {/* ── Cabecera roja con escudo ── */}
+          <div className="bg-ul-700 px-8 pt-8 pb-6 flex flex-col items-center gap-3">
             <img
               src="/logo.png"
               alt="Escudo Universidad Libre"
@@ -53,14 +53,14 @@ export default function AdminLogin() {
               <p className="text-white text-sm font-bold tracking-wide leading-snug">
                 Universidad Libre
               </p>
-              <p className="text-ul-400 text-xs font-semibold tracking-widest uppercase">
+              <p className="text-ul-100 text-xs font-semibold tracking-widest uppercase">
                 Seccional Barranquilla
               </p>
             </div>
           </div>
 
-          {/* ── Franja roja decorativa ── */}
-          <div className="h-1 bg-ul-700" />
+          {/* ── Franja decorativa más oscura ── */}
+          <div className="h-1 bg-ul-900" />
 
           {/* ── Formulario ── */}
           <div className="px-8 py-7">
