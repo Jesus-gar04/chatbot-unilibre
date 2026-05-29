@@ -22,6 +22,8 @@ class Settings(BaseSettings):
     retrieval_k: int = 5
     # Token de HuggingFace (gratis en huggingface.co → Settings → Access Tokens)
     hf_api_key: str = ""
+    # True → usa fastembed local (Docker/dev). False → usa HF API (Render/prod)
+    use_local_embeddings: bool = False
 
     # ── Supabase ──────────────────────────────────────────────────────────────
     # URL del proyecto: https://<project-ref>.supabase.co

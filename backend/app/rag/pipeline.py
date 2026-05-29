@@ -10,12 +10,30 @@ from app.config import settings
 _embeddings = None
 
 
-# ── Embeddings via HuggingFace Inference API ─────────────────────────────────
-# Sin modelo local, sin ONNX Runtime → cabe en los 512 MB de Render free tier.
-# Modelo: sentence-transformers/all-MiniLM-L6-v2 (384 dims, gratis en HF)
+# ── Embeddings: dos implementaciones según el entorno ────────────────────────
+#
+# USE_LOCAL_EMBEDDINGS=true  → _LocalEmbeddings (fastembed/ONNX, para Docker local)
+#                               Sin límite de red. Dev machine tiene RAM de sobra.
+#
+# USE_LOCAL_EMBEDDINGS=false → _HFEmbeddings (HuggingFace Inference API)
+#                               Sin modelo local. Cabe en Render free tier 512 MB.
+
+class _LocalEmbeddings(Embeddings):
+    """Embeddings locales con fastembed (ONNX). Úsalo en Docker/desarrollo."""
+
+    def __init__(self, model_name: str = "BAAI/bge-small-en-v1.5"):
+        from fastembed import TextEmbedding
+        self._model = TextEmbedding(model_name=model_name)
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        return [e.tolist() for e in self._model.embed(texts)]
+
+    def embed_query(self, text: str) -> List[float]:
+        return next(self._model.embed([text])).tolist()
+
 
 class _HFEmbeddings(Embeddings):
-    """Llama a la HuggingFace Inference API para generar embeddings."""
+    """Embeddings vía HuggingFace Inference API. Sin modelo local (Render/prod)."""
 
     _URL = (
         "https://api-inference.huggingface.co"
@@ -38,7 +56,6 @@ class _HFEmbeddings(Embeddings):
         return r.json()
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
-        """Procesa en lotes de 32 para no saturar la API."""
         result = []
         for i in range(0, len(texts), 32):
             result.extend(self._call(texts[i : i + 32]))
@@ -70,14 +87,18 @@ def _db_url() -> str:
 
 # ── Singletons ───────────────────────────────────────────────────────────────
 
-def get_embeddings() -> _HFEmbeddings:
+def get_embeddings() -> Embeddings:
     """
-    Devuelve el cliente de embeddings (singleton).
-    Sin modelo local — solo un cliente HTTP liviano (~1 MB RAM).
+    Devuelve el proveedor de embeddings según USE_LOCAL_EMBEDDINGS:
+      True  → fastembed local (Docker/dev, sin límite de red)
+      False → HuggingFace API  (Render/prod, sin modelo local)
     """
     global _embeddings
     if _embeddings is None:
-        _embeddings = _HFEmbeddings(api_key=settings.hf_api_key)
+        if settings.use_local_embeddings:
+            _embeddings = _LocalEmbeddings()
+        else:
+            _embeddings = _HFEmbeddings(api_key=settings.hf_api_key)
     return _embeddings
 
 
