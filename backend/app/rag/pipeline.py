@@ -193,8 +193,6 @@ REGLAS ESTRICTAS — DEBES CUMPLIRLAS SIN EXCEPCIÓN:
 5. Si la consulta es sobre un trámite o proceso, sigue los pasos exactamente
    como aparecen en los documentos fuente.
 6. Responde siempre en español.
-7. Al final de tu respuesta, indica brevemente la fuente consultada
-   (nombre del documento y página si está disponible).
 
 CONTEXTO INSTITUCIONAL:
 {context}
