@@ -120,6 +120,19 @@ async def download_format(doc_id: str):
         raise HTTPException(status_code=500, detail=f"Error al generar enlace de descarga: {e}")
 
 
+@router.get("/documents/{doc_id}/file-url")
+async def get_file_url(doc_id: str, auth=Depends(require_auth)):
+    """URL firmada (1 h) para preview o descarga de cualquier documento — solo admin."""
+    doc = get_document(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Documento no encontrado")
+    try:
+        url = get_format_download_url(doc_id, doc.get("type", "PDF"))
+        return {"download_url": url, "name": doc["name"], "type": doc.get("type", "PDF")}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al generar enlace: {e}")
+
+
 @router.delete("/documents/{doc_id}", response_model=DeleteResponse)
 async def delete_document(doc_id: str, auth=Depends(require_auth)):
     doc = get_document(doc_id)
