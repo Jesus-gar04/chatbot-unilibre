@@ -8,6 +8,7 @@ from langchain.schema.embeddings import Embeddings
 from app.config import settings
 
 _embeddings = None
+_resolved_db_ip: str = ""   # set by main.py lifespan after IPv4 lookup
 
 
 # ── Embeddings: dos implementaciones según el entorno ────────────────────────
@@ -71,19 +72,42 @@ def _db_url() -> str:
     """
     Convierte la DATABASE_URL de Supabase al formato que necesita SQLAlchemy
     con psycopg2 y SSL habilitado.
+
+    Si _resolved_db_ip está cargado (lo hace el lifespan de main.py), sustituye
+    el hostname por su IPv4 para que libpq nunca haga DNS lookup — necesario en
+    Render donde el resolver puede fallar con EAI_NONAME (-5).
+    sslmode=require no verifica el hostname del certificado, por lo que conectar
+    vía IP es completamente seguro.
     """
     url = settings.database_url
     if not url:
         raise RuntimeError("DATABASE_URL no está configurada en .env")
 
-    # Limpiar espacios y comillas que Render/env vars a veces añaden
     url = url.strip().strip('"').strip("'")
 
-    # Supabase a veces genera postgres:// en vez de postgresql://
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql+psycopg2://", 1)
     elif url.startswith("postgresql://"):
         url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
+
+    # Sustituir hostname por IPv4 pre-resuelto para evitar DNS lookup en libpq
+    if _resolved_db_ip and "@" in url:
+        try:
+            at_idx = url.index("@") + 1
+            rest = url[at_idx:]
+            # El host termina en ':' (con puerto) o '/' (sin puerto explícito)
+            colon_idx = rest.find(":")
+            slash_idx = rest.find("/")
+            end_idx = min(
+                colon_idx if colon_idx != -1 else len(rest),
+                slash_idx if slash_idx != -1 else len(rest),
+            )
+            hostname = rest[:end_idx]
+            if hostname and hostname != _resolved_db_ip:
+                url = url[:at_idx] + url[at_idx:].replace(hostname, _resolved_db_ip, 1)
+                print(f"[DB] Usando IPv4 {_resolved_db_ip} en lugar de {hostname}")
+        except Exception:
+            pass  # Si algo falla, dejamos el hostname original
 
     if "sslmode" not in url:
         sep = "&" if "?" in url else "?"

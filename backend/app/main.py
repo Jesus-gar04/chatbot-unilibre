@@ -12,11 +12,19 @@ from app.admin.router import router as admin_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    import socket
-    from app.config import settings as _s
+    """
+    Resuelve el hostname de la BD a IPv4 en el arranque y lo inyecta en
+    pipeline._resolved_db_ip para que _db_url() lo use directamente en la
+    cadena de conexión de SQLAlchemy/psycopg2.
 
-    _original_getaddrinfo = socket.getaddrinfo
-    _patched = False
+    Por qué es necesario: psycopg2 usa libpq (C), que llama al resolver del
+    OS (getaddrinfo en C) ignorando el módulo socket de Python. En Render el
+    DNS puede fallar con EAI_NONAME (-5) para el hostname directo de Supabase.
+    Pasar la IPv4 en la URL evita el lookup completo.
+    """
+    import socket
+    import app.rag.pipeline as _pipeline
+    from app.config import settings as _s
 
     try:
         raw = _s.database_url.strip().strip('"').strip("'")
@@ -25,28 +33,12 @@ async def lifespan(app: FastAPI):
             results = socket.getaddrinfo(host, 5432, socket.AF_INET)
             if results:
                 ipv4 = results[0][4][0]
-                print(f"[STARTUP] BD resuelta: {host} → {ipv4} (IPv4 cacheado)")
-
-                # Cachear la resolución IPv4 en socket.getaddrinfo para que
-                # psycopg2 use siempre IPv4, sin perder el hostname (necesario para SSL/SNI).
-                def _patched_getaddrinfo(h, p, family=0, type=0, proto=0, flags=0):
-                    if h == host:
-                        port = p or 5432
-                        return [
-                            (socket.AF_INET, socket.SOCK_STREAM, 6,  '', (ipv4, port)),
-                            (socket.AF_INET, socket.SOCK_DGRAM,  17, '', (ipv4, port)),
-                        ]
-                    return _original_getaddrinfo(h, p, family, type, proto, flags)
-
-                socket.getaddrinfo = _patched_getaddrinfo
-                _patched = True
+                _pipeline._resolved_db_ip = ipv4
+                print(f"[STARTUP] BD resuelta: {host} → {ipv4} (se usará IPv4 directa)")
     except Exception as e:
-        print(f"[STARTUP] Pre-resolución de BD falló: {e} — DNS normal")
+        print(f"[STARTUP] Pre-resolución de BD falló: {e} — se usará hostname original")
 
     yield
-
-    if _patched:
-        socket.getaddrinfo = _original_getaddrinfo
 
 
 app = FastAPI(
