@@ -3,7 +3,7 @@ import os
 import tempfile
 import traceback
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from app.auth.service import verify_token
@@ -16,6 +16,7 @@ from app.rag.document_processor import (
     remove_document_metadata,
     get_all_documents,
     get_document,
+    get_format_download_url,
 )
 from app.rag.pipeline import add_documents_to_store, delete_document_from_store
 
@@ -41,13 +42,18 @@ async def list_documents(auth=Depends(require_auth)):
 
 @router.post("/documents/upload")
 async def upload_document(
-    file: UploadFile = File(...), auth=Depends(require_auth)
+    file: UploadFile = File(...),
+    doc_category: str = Form("manual"),
+    auth=Depends(require_auth),
 ):
     if file.content_type not in _ALLOWED:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Tipo de archivo no soportado. Use PDF, DOCX o TXT.",
         )
+
+    if doc_category not in ("manual", "formato"):
+        doc_category = "manual"
 
     content = await file.read()
     if len(content) > MAX_SIZE:
@@ -59,28 +65,21 @@ async def upload_document(
     doc_id = str(uuid.uuid4())
     ext = _ALLOWED[file.content_type]
 
-    # Guardamos en archivo temporal para poder procesarlo con PyMuPDF / python-docx
     tmp_fd, tmp_path = tempfile.mkstemp(suffix=ext)
     try:
         with os.fdopen(tmp_fd, "wb") as tmp:
             tmp.write(content)
 
-        # 1. Extraer texto y generar chunks
-        chunks, chunk_count = process_document(tmp_path, doc_id)
-
-        # 2. Indexar embeddings en Supabase (PGVector)
+        chunks, chunk_count = process_document(tmp_path, doc_id, doc_category)
         add_documents_to_store(chunks, doc_id)
-
-        # 3. Subir archivo original a Supabase Storage
         upload_to_storage(doc_id, ext, content)
-
-        # 4. Guardar metadata en tabla 'documents' de Supabase
         add_document_metadata(
             doc_id=doc_id,
             name=file.filename,
             file_type=ext.lstrip(".").upper(),
             size=len(content),
             chunks=chunk_count,
+            doc_category=doc_category,
         )
 
         return {
@@ -89,10 +88,8 @@ async def upload_document(
         }
 
     except Exception as e:
-        # Log completo para diagnóstico en Render
         print(f"[UPLOAD ERROR] {type(e).__name__}: {e}")
         print(traceback.format_exc())
-        # Intentar revertir lo que se haya guardado
         try:
             delete_document_from_store(doc_id)
         except Exception:
@@ -104,9 +101,23 @@ async def upload_document(
         raise HTTPException(status_code=500, detail=f"Error al procesar documento: {e}")
 
     finally:
-        # Siempre eliminar el archivo temporal
         if os.path.exists(tmp_path):
             os.unlink(tmp_path)
+
+
+@router.get("/documents/{doc_id}/download")
+async def download_format(doc_id: str):
+    """Endpoint público — devuelve URL firmada para descargar un formato."""
+    doc = get_document(doc_id)
+    if not doc:
+        raise HTTPException(status_code=404, detail="Documento no encontrado")
+    if doc.get("doc_category") != "formato":
+        raise HTTPException(status_code=403, detail="Este documento no es un formato descargable")
+    try:
+        url = get_format_download_url(doc_id, doc.get("type", "PDF"))
+        return {"download_url": url, "name": doc["name"]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al generar enlace de descarga: {e}")
 
 
 @router.delete("/documents/{doc_id}", response_model=DeleteResponse)

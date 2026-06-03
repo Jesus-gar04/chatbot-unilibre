@@ -7,10 +7,10 @@ import { streamChat } from '../api/client'
 const WELCOME = {
   role: 'assistant',
   content:
-    '¡Bienvenido al Asistente Virtual de la Universidad Libre Seccional Barranquilla! ' +
-    'Estoy aquí para resolver tus dudas sobre procesos académicos, administrativos y ' +
-    'reglamentarios de nuestra institución. ¿En qué puedo ayudarte hoy?',
-  sources: [],
+    '¡Hola! 👋 Soy Lara, tu asistente virtual de la Universidad Libre Seccional Barranquilla. ' +
+    'Estoy aquí para ayudarte con tus dudas sobre procesos académicos, trámites y reglamentos. ' +
+    '¿En qué te puedo ayudar hoy?',
+  formats: [],
 }
 
 export default function ChatPage() {
@@ -38,7 +38,7 @@ export default function ChatPage() {
 
     setMessages((prev) => [
       ...prev,
-      { role: 'assistant', content: '', sources: [] },
+      { role: 'assistant', content: '', formats: [] },
     ])
 
     let fullContent = ''
@@ -54,10 +54,10 @@ export default function ChatPage() {
           return next
         })
       },
-      (sources) => {
+      (formats) => {
         setMessages((prev) => {
           const next = [...prev]
-          next[next.length - 1] = { ...next[next.length - 1], sources }
+          next[next.length - 1] = { ...next[next.length - 1], formats }
           return next
         })
         setStreaming(false)

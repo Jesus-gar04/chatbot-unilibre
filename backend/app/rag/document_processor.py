@@ -68,10 +68,12 @@ def extract_txt(file_path: str) -> List[Document]:
 
 # ── Chunking ─────────────────────────────────────────────────────────────────
 
-def process_document(file_path: str, doc_id: str) -> Tuple[List[Document], int]:
+def process_document(
+    file_path: str, doc_id: str, doc_category: str = "manual"
+) -> Tuple[List[Document], int]:
     """
     Extrae texto del archivo y lo divide en chunks con overlap.
-    Agrega doc_id al metadata de cada chunk para poder borrarlo luego.
+    Agrega doc_id y doc_category al metadata de cada chunk.
     """
     ext = Path(file_path).suffix.lower()
 
@@ -93,6 +95,7 @@ def process_document(file_path: str, doc_id: str) -> Tuple[List[Document], int]:
     for i, chunk in enumerate(chunks):
         chunk.metadata["doc_id"] = doc_id
         chunk.metadata["chunk_index"] = i
+        chunk.metadata["doc_category"] = doc_category
 
     return chunks, len(chunks)
 
@@ -130,7 +133,8 @@ def delete_from_storage(doc_id: str):
 # ── Metadata en Supabase PostgreSQL ──────────────────────────────────────────
 
 def add_document_metadata(
-    doc_id: str, name: str, file_type: str, size: int, chunks: int
+    doc_id: str, name: str, file_type: str, size: int, chunks: int,
+    doc_category: str = "manual",
 ):
     """Inserta el registro del documento en la tabla 'documents' de Supabase."""
     sb = get_supabase()
@@ -142,7 +146,17 @@ def add_document_metadata(
         "chunks": chunks,
         "upload_date": datetime.utcnow().isoformat(),
         "status": "indexed",
+        "doc_category": doc_category,
     }).execute()
+
+
+def get_format_download_url(doc_id: str, file_type: str) -> str:
+    """Genera una URL firmada (1 hora) para descargar un formato desde Supabase Storage."""
+    ext = f".{file_type.lower()}"
+    path = f"{doc_id}{ext}"
+    sb = get_supabase()
+    result = sb.storage.from_(settings.storage_bucket).create_signed_url(path, 3600)
+    return result["signedURL"]
 
 
 def remove_document_metadata(doc_id: str):

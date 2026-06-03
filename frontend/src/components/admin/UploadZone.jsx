@@ -8,7 +8,7 @@ const ACCEPT_TYPES = [
   'text/plain',
 ]
 
-export default function UploadZone({ onUploaded }) {
+export default function UploadZone({ onUploaded, docCategory = 'manual' }) {
   const [dragging, setDragging]   = useState(false)
   const [progress, setProgress]   = useState(null)   // null | 0-100
   const [phase, setPhase]         = useState('')      // 'uploading' | 'processing'
@@ -47,6 +47,7 @@ export default function UploadZone({ onUploaded }) {
 
     const form = new FormData()
     form.append('file', file)
+    form.append('doc_category', docCategory)
 
     setStatus(null)
     setStatusMsg('')

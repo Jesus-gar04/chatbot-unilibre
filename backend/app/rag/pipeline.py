@@ -174,36 +174,75 @@ def retrieve_context(query: str) -> List[Document]:
         return []
 
 
-# ── Prompt institucional Universidad Libre Seccional Barranquilla ────────────
+# ── Prompt ───────────────────────────────────────────────────────────────────
 
 _PROMPT = """\
-Eres el Asistente Virtual oficial de la Universidad Libre Seccional Barranquilla.
-Tu misión es apoyar a estudiantes, docentes y comunidad académica respondiendo
-consultas sobre procesos académicos, administrativos y reglamentarios de la institución.
+Eres Lara, la asistente virtual de la Universidad Libre Seccional Barranquilla.
+Tu propósito es acompañar a estudiantes y comunidad académica con calidez y precisión
+en sus consultas sobre procesos académicos, administrativos y reglamentarios.
 
-REGLAS ESTRICTAS — DEBES CUMPLIRLAS SIN EXCEPCIÓN:
-1. Responde ÚNICAMENTE con información que esté presente en el CONTEXTO proporcionado.
-2. Si la consulta no puede responderse con el contexto disponible, responde exactamente:
-   "No encontré información sobre eso en los documentos institucionales disponibles.
-    Te recomiendo comunicarte directamente con la Secretaría de la Universidad Libre
-    Seccional Barranquilla."
-3. NO inventes datos, fechas, requisitos, artículos, normas ni procedimientos
-   que no aparezcan en el contexto.
-4. Usa un tono formal, claro y respetuoso, acorde con la imagen institucional.
-5. Si la consulta es sobre un trámite o proceso, sigue los pasos exactamente
-   como aparecen en los documentos fuente.
+REGLAS (sin excepción):
+1. Responde ÚNICAMENTE con la información que aparezca en el CONTEXTO proporcionado.
+   Jamás inventes datos, fechas, artículos, requisitos ni procedimientos.
+2. Usa un tono cálido, cercano y humano — como si genuinamente quisieras ayudar.
+   Evita sonar frío, robótico o excesivamente formal.
+3. Nunca menciones de qué documento o archivo proviene la información.
+4. Si el contexto incluye un FORMATO DESCARGABLE relevante para la pregunta,
+   explica para qué sirve y cómo diligenciarlo según las instrucciones del contexto,
+   e indica que puede descargarlo a través del enlace que aparecerá en el chat.
+5. Si la información solicitada NO está en el contexto, responde exactamente:
+   "¡Esa información no la tengo disponible por el momento! Te recomiendo acercarte \
+a la Secretaría de la universidad o escribirle a Iván Quintero \
+(ivan.quintero@unilibre.edu.co) — él con gusto te orientará."
 6. Responde siempre en español.
 
-CONTEXTO INSTITUCIONAL:
+CONTEXTO:
 {context}
 
-HISTORIAL DE CONVERSACIÓN:
+HISTORIAL:
 {history}
 
 PREGUNTA:
 {question}
 
 RESPUESTA:"""
+
+_NO_INFO = (
+    "¡Esa información no la tengo disponible por el momento! "
+    "Te recomiendo acercarte a la Secretaría de la Universidad Libre "
+    "Seccional Barranquilla, o escribirle directamente a "
+    "Iván Quintero al correo ivan.quintero@unilibre.edu.co — "
+    "él con gusto te orientará. 😊"
+)
+
+
+def _build_formato_download_info(context_docs: List[Document]) -> List[dict]:
+    """Genera la lista de formatos descargables a partir de los chunks recuperados."""
+    from app.rag.document_processor import get_document, get_format_download_url
+
+    seen_ids: set = set()
+    formats: List[dict] = []
+
+    for d in context_docs:
+        if d.metadata.get("doc_category") != "formato":
+            continue
+        doc_id = d.metadata.get("doc_id")
+        if not doc_id or doc_id in seen_ids:
+            continue
+        seen_ids.add(doc_id)
+        try:
+            doc_meta = get_document(doc_id)
+            file_type = doc_meta.get("type", "PDF") if doc_meta else "PDF"
+            download_url = get_format_download_url(doc_id, file_type)
+            formats.append({
+                "doc_id": doc_id,
+                "name": d.metadata.get("source", "Formato"),
+                "download_url": download_url,
+            })
+        except Exception:
+            pass
+
+    return formats
 
 
 # ── Streaming ────────────────────────────────────────────────────────────────
@@ -214,21 +253,21 @@ async def stream_rag_response(
 
     context_docs = retrieve_context(query)
 
-    _no_info = (
-        "No encontré información sobre eso en los documentos institucionales "
-        "disponibles. Te recomiendo comunicarte directamente con la Secretaría "
-        "de la Universidad Libre Seccional Barranquilla."
-    )
-
     if not context_docs:
-        yield f'data: {json.dumps({"token": _no_info, "done": False})}\n\n'
-        yield f'data: {json.dumps({"sources": [], "done": True})}\n\n'
+        yield f'data: {json.dumps({"token": _NO_INFO, "done": False})}\n\n'
+        yield f'data: {json.dumps({"formats": [], "done": True})}\n\n'
         return
 
-    context_text = "\n\n---\n\n".join(
-        f"[Fuente: {d.metadata.get('source', '?')}, Pág. {d.metadata.get('page', '?')}]\n{d.page_content}"
-        for d in context_docs
-    )
+    # Construir contexto: manuales como texto plano, formatos con marcador
+    context_parts = []
+    for d in context_docs:
+        if d.metadata.get("doc_category") == "formato":
+            context_parts.append(
+                f"[FORMATO DESCARGABLE: {d.metadata.get('source', 'formato')}]\n{d.page_content}"
+            )
+        else:
+            context_parts.append(d.page_content)
+    context_text = "\n\n---\n\n".join(context_parts)
 
     history_text = (
         "\n".join(
@@ -245,16 +284,8 @@ async def stream_rag_response(
         question=query,
     )
 
-    # Deduplicar fuentes
-    seen, sources = set(), []
-    for d in context_docs:
-        key = f"{d.metadata.get('source', '')}_{d.metadata.get('page', '')}"
-        if key not in seen:
-            seen.add(key)
-            sources.append({
-                "document": d.metadata.get("source", "Desconocido"),
-                "page": d.metadata.get("page"),
-            })
+    # Generar URLs de descarga para formatos recuperados
+    formats = _build_formato_download_info(context_docs)
 
     llm = get_llm()
     try:
@@ -262,7 +293,7 @@ async def stream_rag_response(
             token = chunk.content if hasattr(chunk, "content") else str(chunk)
             if token:
                 yield f'data: {json.dumps({"token": token, "done": False})}\n\n'
-        yield f'data: {json.dumps({"sources": sources, "done": True})}\n\n'
+        yield f'data: {json.dumps({"formats": formats, "done": True})}\n\n'
     except Exception as e:
         yield f'data: {json.dumps({"token": f"Error al generar respuesta: {e}", "done": False})}\n\n'
-        yield f'data: {json.dumps({"sources": [], "done": True})}\n\n'
+        yield f'data: {json.dumps({"formats": [], "done": True})}\n\n'

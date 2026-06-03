@@ -36,6 +36,13 @@ class DocumentInfo(BaseModel):
     chunks: int
     upload_date: str
     status: str
+    doc_category: str = "manual"  # "manual" | "formato"
+
+
+class FormatInfo(BaseModel):
+    doc_id: str
+    name: str
+    download_url: str
 
 
 class UploadResponse(BaseModel):

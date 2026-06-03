@@ -22,9 +22,9 @@ export function setAuthToken(token) {
 
 /**
  * Stream chat via SSE-over-fetch (POST).
- * onToken(str)    — token a token mientras el LLM genera
- * onDone(sources) — cuando termina, con lista de fuentes
- * onError(msg)    — ante cualquier fallo de red
+ * onToken(str)            — token a token mientras el LLM genera
+ * onDone(formats)         — cuando termina, con lista de formatos descargables
+ * onError(msg)            — ante cualquier fallo de red
  */
 export async function streamChat(query, history, onToken, onDone, onError) {
   try {
@@ -56,7 +56,7 @@ export async function streamChat(query, history, onToken, onDone, onError) {
         try {
           const data = JSON.parse(line.slice(6))
           if (data.done) {
-            onDone(data.sources || [])
+            onDone(data.formats || [])
           } else if (data.token) {
             onToken(data.token)
           }
