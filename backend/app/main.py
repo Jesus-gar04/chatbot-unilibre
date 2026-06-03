@@ -12,6 +12,23 @@ from app.admin.router import router as admin_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Pre-resolver el hostname de la BD a IPv4 al arrancar,
+    # cuando el servidor tiene conectividad estable.
+    # Render free tier tiene DNS inconsistente bajo carga — esto evita el problema.
+    import socket
+    from app.config import settings as _s
+    try:
+        raw = _s.database_url.strip().strip('"').strip("'")
+        host = raw.split("@")[1].split(":")[0] if "@" in raw else ""
+        if host:
+            results = socket.getaddrinfo(host, 5432, socket.AF_INET)
+            if results:
+                ipv4 = results[0][4][0]
+                print(f"[STARTUP] BD resuelta: {host} → {ipv4}")
+                # Inyectar la IP en la variable para que _db_url() la use
+                _s.database_url = raw.replace(f"@{host}:", f"@{ipv4}:", 1)
+    except Exception as e:
+        print(f"[STARTUP] Pre-resolución de BD falló: {e} — se usará hostname original")
     yield
 
 
