@@ -170,7 +170,9 @@ def retrieve_context(query: str) -> List[Document]:
     try:
         store = get_vector_store()
         return store.similarity_search(query, k=settings.retrieval_k)
-    except Exception:
+    except Exception as e:
+        # Log visible en la consola del servidor para diagnóstico
+        print(f"[RAG ERROR] retrieve_context falló — {type(e).__name__}: {e}")
         return []
 
 
