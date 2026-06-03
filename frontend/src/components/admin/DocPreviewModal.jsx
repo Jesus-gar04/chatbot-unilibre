@@ -59,14 +59,14 @@ export default function DocPreviewModal({ doc, onClose }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4"
       onClick={(e) => { if (e.target === e.currentTarget) onClose() }}
     >
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
 
       {/* Panel */}
-      <div className="relative z-10 bg-white rounded-2xl shadow-2xl flex flex-col w-full max-w-4xl max-h-[90vh]">
+      <div className="relative z-10 bg-white flex flex-col w-full h-full sm:h-auto sm:rounded-2xl sm:shadow-2xl sm:max-w-4xl sm:max-h-[90vh]">
 
         {/* Header */}
         <div className="flex items-start gap-3 px-6 py-4 border-b border-gray-200">
@@ -112,7 +112,7 @@ export default function DocPreviewModal({ doc, onClose }) {
         </div>
 
         {/* Body — preview */}
-        <div className="flex-1 overflow-hidden rounded-b-2xl bg-gray-50 min-h-[400px] flex items-center justify-center">
+        <div className="flex-1 overflow-hidden sm:rounded-b-2xl bg-gray-50 min-h-[300px] sm:min-h-[400px] flex items-center justify-center">
           {loading && (
             <div className="flex flex-col items-center gap-3 text-gray-400">
               <svg className="w-6 h-6 animate-spin" fill="none" viewBox="0 0 24 24">
