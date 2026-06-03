@@ -73,11 +73,9 @@ def _db_url() -> str:
     Convierte la DATABASE_URL de Supabase al formato que necesita SQLAlchemy
     con psycopg2 y SSL habilitado.
 
-    Si _resolved_db_ip está cargado (lo hace el lifespan de main.py), sustituye
-    el hostname por su IPv4 para que libpq nunca haga DNS lookup — necesario en
-    Render donde el resolver puede fallar con EAI_NONAME (-5).
-    sslmode=require no verifica el hostname del certificado, por lo que conectar
-    vía IP es completamente seguro.
+    El hostname NO se sustituye aquí — se mantiene para que SSL/SNI funcione
+    correctamente con el Supabase Pooler. El bypass de DNS se hace a nivel de
+    libpq con el parámetro 'hostaddr' en connect_args (ver get_vector_store).
     """
     url = settings.database_url
     if not url:
@@ -89,25 +87,6 @@ def _db_url() -> str:
         url = url.replace("postgres://", "postgresql+psycopg2://", 1)
     elif url.startswith("postgresql://"):
         url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
-
-    # Sustituir hostname por IPv4 pre-resuelto para evitar DNS lookup en libpq
-    if _resolved_db_ip and "@" in url:
-        try:
-            at_idx = url.index("@") + 1
-            rest = url[at_idx:]
-            # El host termina en ':' (con puerto) o '/' (sin puerto explícito)
-            colon_idx = rest.find(":")
-            slash_idx = rest.find("/")
-            end_idx = min(
-                colon_idx if colon_idx != -1 else len(rest),
-                slash_idx if slash_idx != -1 else len(rest),
-            )
-            hostname = rest[:end_idx]
-            if hostname and hostname != _resolved_db_ip:
-                url = url[:at_idx] + url[at_idx:].replace(hostname, _resolved_db_ip, 1)
-                print(f"[DB] Usando IPv4 {_resolved_db_ip} en lugar de {hostname}")
-        except Exception:
-            pass  # Si algo falla, dejamos el hostname original
 
     if "sslmode" not in url:
         sep = "&" if "?" in url else "?"
@@ -136,15 +115,23 @@ def get_vector_store() -> PGVector:
     """
     Crea una instancia de PGVector con NullPool para no mantener
     conexiones inactivas en RAM (ideal para Render free tier 512 MB).
-    Las tablas ya fueron creadas en el startup inicial.
+
+    Si _resolved_db_ip está cargado, se pasa como 'hostaddr' en connect_args.
+    Esto le dice a libpq que use esa IPv4 para la conexión TCP sin hacer DNS
+    lookup, mientras que el hostname original del URL se preserva para SSL SNI
+    — necesario para que el Supabase Pooler enrute la conexión correctamente.
     """
     from sqlalchemy.pool import NullPool
+    engine_args: dict = {"poolclass": NullPool}
+    if _resolved_db_ip:
+        engine_args["connect_args"] = {"hostaddr": _resolved_db_ip}
+        print(f"[DB] Conectando vía hostaddr={_resolved_db_ip} (DNS bypass, SNI preservado)")
     return PGVector(
         connection_string=_db_url(),
         embedding_function=get_embeddings(),
         collection_name="rag_unilibre",
         pre_delete_collection=False,
-        engine_args={"poolclass": NullPool},
+        engine_args=engine_args,
     )
 
 
@@ -178,7 +165,11 @@ def delete_document_from_store(doc_id: str):
     'doc_id' guardado en la columna JSONB 'cmetadata' de PGVector.
     """
     from sqlalchemy import create_engine, text
-    engine = create_engine(_db_url())
+    from sqlalchemy.pool import NullPool
+    create_kwargs: dict = {"poolclass": NullPool}
+    if _resolved_db_ip:
+        create_kwargs["connect_args"] = {"hostaddr": _resolved_db_ip}
+    engine = create_engine(_db_url(), **create_kwargs)
     with engine.connect() as conn:
         row = conn.execute(
             text("SELECT uuid FROM langchain_pg_collection WHERE name = 'rag_unilibre'")
