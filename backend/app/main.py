@@ -1,7 +1,8 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.auth.router import router as auth_router
@@ -11,10 +12,6 @@ from app.admin.router import router as admin_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Embeddings via HuggingFace API — sin modelo local, sin pre-carga pesada.
-    El servidor arranca en segundos y usa ~200 MB RAM (dentro del free tier).
-    """
     yield
 
 
@@ -22,17 +19,32 @@ app = FastAPI(
     title="RAG Chatbot API — Universidad Libre Barranquilla",
     description="Chatbot académico con pipeline RAG",
     version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
+    # Desactivar documentación pública en producción
+    docs_url="/docs" if not settings.production else None,
+    redoc_url="/redoc" if not settings.production else None,
+    openapi_url="/openapi.json" if not settings.production else None,
     lifespan=lifespan,
 )
 
+# ── Security headers ─────────────────────────────────────────────────────────
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"]  = "nosniff"
+    response.headers["X-Frame-Options"]         = "DENY"
+    response.headers["X-XSS-Protection"]        = "1; mode=block"
+    response.headers["Referrer-Policy"]         = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"]      = "geolocation=(), microphone=(), camera=()"
+    # En producción el servidor (Render/Vercel) ya maneja HSTS vía TLS
+    return response
+
+# ── CORS ──────────────────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "DELETE"],   # solo los verbos usados
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 app.include_router(auth_router)

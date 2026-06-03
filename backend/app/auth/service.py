@@ -1,14 +1,40 @@
+import secrets
 from datetime import datetime, timedelta
+
 from jose import jwt, JWTError
 from fastapi import HTTPException, status
+
 from app.config import settings
+from app.utils.rate_limit import login_limiter
 
 
-def verify_credentials(username: str, password: str) -> bool:
-    return (
-        username == settings.admin_username
-        and password == settings.admin_password
+def _clear_login_attempts(ip: str) -> None:
+    """Limpiar contador al loguearse correctamente."""
+    login_limiter._log.pop(ip, None)
+
+
+# ── Auth ──────────────────────────────────────────────────────────────────────
+
+def verify_credentials(username: str, password: str, client_ip: str = "unknown") -> bool:
+    """
+    Comparación en tiempo constante para evitar timing attacks.
+    Registra el intento antes de verificar (se limpia si es exitoso).
+    """
+    login_limiter.check(client_ip)
+
+    username_ok = secrets.compare_digest(
+        username.encode("utf-8"),
+        settings.admin_username.encode("utf-8"),
     )
+    password_ok = secrets.compare_digest(
+        password.encode("utf-8"),
+        settings.admin_password.encode("utf-8"),
+    )
+    ok = username_ok and password_ok
+
+    if ok:
+        _clear_login_attempts(client_ip)
+    return ok
 
 
 def create_access_token(data: dict) -> str:

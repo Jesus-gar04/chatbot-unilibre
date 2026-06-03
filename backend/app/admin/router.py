@@ -98,7 +98,7 @@ async def upload_document(
             delete_from_storage(doc_id)
         except Exception:
             pass
-        raise HTTPException(status_code=500, detail=f"Error al procesar documento: {e}")
+        raise HTTPException(status_code=500, detail="Error al procesar el documento. Intente de nuevo.")
 
     finally:
         if os.path.exists(tmp_path):
@@ -117,7 +117,7 @@ async def download_format(doc_id: str):
         url = get_format_download_url(doc_id, doc.get("type", "PDF"))
         return {"download_url": url, "name": doc["name"]}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error al generar enlace de descarga: {e}")
+        raise HTTPException(status_code=500, detail="No se pudo generar el enlace de descarga.")
 
 
 @router.get("/documents/{doc_id}/file-url")

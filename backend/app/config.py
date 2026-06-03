@@ -43,6 +43,10 @@ class Settings(BaseSettings):
         "http://127.0.0.1:5173",
     ]
 
+    # ── Producción ────────────────────────────────────────────────────────────
+    # True → desactiva /docs y /redoc (recomendado en producción)
+    production: bool = False
+
     class Config:
         env_file = ".env"
 
