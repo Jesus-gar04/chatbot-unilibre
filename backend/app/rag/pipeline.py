@@ -75,10 +75,23 @@ def _db_url() -> str:
     url = settings.database_url
     if not url:
         raise RuntimeError("DATABASE_URL no está configurada en .env")
-    # Asegurar driver psycopg2
-    if url.startswith("postgresql://"):
+
+    # Limpiar espacios y comillas que Render/env vars a veces añaden
+    url = url.strip().strip('"').strip("'")
+
+    # Supabase a veces genera postgres:// en vez de postgresql://
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+psycopg2://", 1)
+    elif url.startswith("postgresql://"):
         url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
-    # Supabase requiere SSL
+
+    # Log para confirmar qué hostname se está usando
+    try:
+        host = url.split("@")[1].split(":")[0] if "@" in url else "desconocido"
+        print(f"[DB] Conectando a: {host}")
+    except Exception:
+        pass
+
     if "sslmode" not in url:
         sep = "&" if "?" in url else "?"
         url += f"{sep}sslmode=require"
