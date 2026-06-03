@@ -12,11 +12,12 @@ from app.admin.router import router as admin_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Pre-resolver el hostname de la BD a IPv4 al arrancar,
-    # cuando el servidor tiene conectividad estable.
-    # Render free tier tiene DNS inconsistente bajo carga — esto evita el problema.
     import socket
     from app.config import settings as _s
+
+    _original_getaddrinfo = socket.getaddrinfo
+    _patched = False
+
     try:
         raw = _s.database_url.strip().strip('"').strip("'")
         host = raw.split("@")[1].split(":")[0] if "@" in raw else ""
@@ -24,12 +25,28 @@ async def lifespan(app: FastAPI):
             results = socket.getaddrinfo(host, 5432, socket.AF_INET)
             if results:
                 ipv4 = results[0][4][0]
-                print(f"[STARTUP] BD resuelta: {host} → {ipv4}")
-                # Inyectar la IP en la variable para que _db_url() la use
-                _s.database_url = raw.replace(f"@{host}:", f"@{ipv4}:", 1)
+                print(f"[STARTUP] BD resuelta: {host} → {ipv4} (IPv4 cacheado)")
+
+                # Cachear la resolución IPv4 en socket.getaddrinfo para que
+                # psycopg2 use siempre IPv4, sin perder el hostname (necesario para SSL/SNI).
+                def _patched_getaddrinfo(h, p, family=0, type=0, proto=0, flags=0):
+                    if h == host:
+                        port = p or 5432
+                        return [
+                            (socket.AF_INET, socket.SOCK_STREAM, 6,  '', (ipv4, port)),
+                            (socket.AF_INET, socket.SOCK_DGRAM,  17, '', (ipv4, port)),
+                        ]
+                    return _original_getaddrinfo(h, p, family, type, proto, flags)
+
+                socket.getaddrinfo = _patched_getaddrinfo
+                _patched = True
     except Exception as e:
-        print(f"[STARTUP] Pre-resolución de BD falló: {e} — se usará hostname original")
+        print(f"[STARTUP] Pre-resolución de BD falló: {e} — DNS normal")
+
     yield
+
+    if _patched:
+        socket.getaddrinfo = _original_getaddrinfo
 
 
 app = FastAPI(

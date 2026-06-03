@@ -85,13 +85,6 @@ def _db_url() -> str:
     elif url.startswith("postgresql://"):
         url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
 
-    # Log para confirmar qué hostname se está usando
-    try:
-        host = url.split("@")[1].split(":")[0] if "@" in url else "desconocido"
-        print(f"[DB] Conectando a: {host}")
-    except Exception:
-        pass
-
     if "sslmode" not in url:
         sep = "&" if "?" in url else "?"
         url += f"{sep}sslmode=require"
