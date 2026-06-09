@@ -1,3 +1,14 @@
+# ── DNS fix ───────────────────────────────────────────────────────────────────
+# Render's default DNS fails for external API hostnames (e.g. voyageai.com).
+# Override resolv.conf with reliable public resolvers before any import that
+# might trigger a network call. Same fix as start.sh but guaranteed to run
+# regardless of how Render starts the process.
+try:
+    with open("/etc/resolv.conf", "w") as _f:
+        _f.write("nameserver 8.8.8.8\nnameserver 1.1.1.1\n")
+except Exception:
+    pass
+
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -36,6 +47,13 @@ async def lifespan(app: FastAPI):
                 print(f"[STARTUP] BD resuelta: {db_host} → {ipv4}")
     except Exception as e:
         print(f"[STARTUP] Pre-resolución BD falló: {e}")
+
+    try:
+        res = socket.getaddrinfo("api.voyageai.com", 443, socket.AF_INET)
+        if res:
+            print(f"[STARTUP] Voyage API resuelta: api.voyageai.com → {res[0][4][0]}")
+    except Exception as e:
+        print(f"[STARTUP] Pre-resolución Voyage API falló: {e}")
 
     yield
 
