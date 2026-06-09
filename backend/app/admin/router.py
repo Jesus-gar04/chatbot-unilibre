@@ -71,7 +71,7 @@ async def upload_document(
             tmp.write(content)
 
         chunks, chunk_count = process_document(tmp_path, doc_id, doc_category)
-        add_documents_to_store(chunks, doc_id)
+        add_documents_to_store(chunks)
         upload_to_storage(doc_id, ext, content)
         add_document_metadata(
             doc_id=doc_id,
@@ -98,7 +98,10 @@ async def upload_document(
             delete_from_storage(doc_id)
         except Exception:
             pass
-        raise HTTPException(status_code=500, detail="Error al procesar el documento. Intente de nuevo.")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al procesar el documento ({type(e).__name__}): {e}",
+        )
 
     finally:
         if os.path.exists(tmp_path):

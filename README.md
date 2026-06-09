@@ -1,4 +1,4 @@
-# Chatbot RAG Académico
+# Chatbot RAG Académico — Unilibre Barranquilla
 
 Chatbot de Retrieval-Augmented Generation para consultas académicas institucionales.
 
@@ -22,9 +22,9 @@ Chatbot de Retrieval-Augmented Generation para consultas académicas institucion
           ┌─────────────┴──────────────┐
           │                            │
    ┌──────▼──────┐           ┌─────────▼────────┐
-   │  ChromaDB   │           │  HuggingFace      │
-   │  (FAISS-    │           │  Embeddings       │
-   │   backed)   │           │  all-MiniLM-L6-v2 │
+   │  Supabase   │           │  Voyage AI        │
+   │  PGVector   │           │  Embeddings       │
+   │  (pgvector) │           │  voyage-multi-2   │
    └─────────────┘           └──────────────────┘
 ```
 
@@ -32,8 +32,9 @@ Chatbot de Retrieval-Augmented Generation para consultas académicas institucion
 
 - Python 3.11+
 - Node.js 20+
-- Docker + Docker Compose (para despliegue en contenedor)
-- API key de OpenAI **o** Anthropic
+- Cuenta en [Supabase](https://supabase.com) (gratuita)
+- API key de [Voyage AI](https://dash.voyageai.com) (gratuita, 50M tokens/mes)
+- API key de [DeepSeek](https://platform.deepseek.com) (LLM)
 
 ## Instalación rápida (desarrollo local)
 
@@ -41,10 +42,17 @@ Chatbot de Retrieval-Augmented Generation para consultas académicas institucion
 
 ```bash
 cp .env.example backend/.env
-# Editar backend/.env con tu API key y credenciales de admin
+# Editar backend/.env con tus API keys y credenciales
 ```
 
-### 2. Backend
+### 2. Base de datos (Supabase)
+
+1. Crear un proyecto nuevo en [app.supabase.com](https://app.supabase.com)
+2. Ejecutar `schema.sql` en el SQL Editor de Supabase
+3. Crear bucket `documents` (privado) en Storage
+4. Copiar `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` y `DATABASE_URL` al `.env`
+
+### 3. Backend
 
 ```bash
 cd backend
@@ -62,7 +70,7 @@ uvicorn app.main:app --reload --port 8000
 El backend estará disponible en `http://localhost:8000`.  
 Documentación interactiva: `http://localhost:8000/docs`
 
-### 3. Frontend
+### 4. Frontend
 
 ```bash
 cd frontend
@@ -72,27 +80,17 @@ npm run dev
 
 El frontend estará disponible en `http://localhost:5173`.
 
-## Despliegue con Docker Compose
-
-```bash
-# Asegúrese de tener backend/.env configurado
-docker compose up --build -d
-
-# Ver logs
-docker compose logs -f
-
-# Detener
-docker compose down
-```
-
 ## Configuración (.env)
 
 | Variable | Descripción | Ejemplo |
 |---|---|---|
-| `LLM_PROVIDER` | Proveedor LLM | `openai` \| `anthropic` |
-| `LLM_MODEL` | Modelo a usar | `gpt-4o` \| `claude-sonnet-4-6` |
-| `OPENAI_API_KEY` | API key OpenAI | `sk-...` |
-| `ANTHROPIC_API_KEY` | API key Anthropic | `sk-ant-...` |
+| `DEEPSEEK_API_KEY` | API key DeepSeek | `sk-...` |
+| `LLM_MODEL` | Modelo a usar | `deepseek-chat` |
+| `VOYAGE_API_KEY` | API key Voyage AI (embeddings) | `pa-...` |
+| `SUPABASE_URL` | URL del proyecto Supabase | `https://xxx.supabase.co` |
+| `SUPABASE_SERVICE_ROLE_KEY` | Clave service_role de Supabase | `eyJ...` |
+| `DATABASE_URL` | Cadena de conexión PostgreSQL | `postgresql://postgres:...` |
+| `STORAGE_BUCKET` | Bucket de Supabase Storage | `documents` |
 | `ADMIN_USERNAME` | Usuario del secretario | `secretaria` |
 | `ADMIN_PASSWORD` | Contraseña del secretario | `...` |
 | `JWT_SECRET_KEY` | Clave para firmar JWT | `openssl rand -hex 32` |
@@ -105,13 +103,14 @@ docker compose down
 
 ### Chatbot público
 Acceda a `http://localhost:5173` — sin login, sin registro.  
-Escriba su pregunta en lenguaje natural. El bot responde con contexto de los documentos cargados e indica la fuente (nombre del archivo + página).
+Escriba su pregunta en lenguaje natural.
 
 ### Panel de administración
 Acceda a `http://localhost:5173/admin`.  
 Ingrese con las credenciales configuradas en `.env`.  
 Desde el panel puede:
 - **Cargar documentos** (PDF, DOCX, TXT — máx. 50 MB) arrastrando al área de carga
+- **Categorizar** como *manual* (contexto) o *formato* (descargable por los estudiantes)
 - **Ver** todos los documentos indexados con su estado y número de chunks
 - **Eliminar** un documento del vector store (con confirmación)
 
@@ -127,11 +126,12 @@ CHATBOT/
 │   │   ├── chat/              # Endpoint de streaming SSE
 │   │   ├── admin/             # Upload / list / delete (protegido)
 │   │   ├── rag/
-│   │   │   ├── pipeline.py    # ChromaDB + LLM + stream
+│   │   │   ├── pipeline.py    # PGVector + Voyage AI + DeepSeek stream
 │   │   │   └── document_processor.py  # PDF/DOCX/TXT → chunks
 │   │   └── models/schemas.py  # Pydantic models
 │   ├── requirements.txt
 │   ├── Dockerfile
+│   ├── start.sh
 │   └── .env.example
 ├── frontend/
 │   └── src/
@@ -139,14 +139,14 @@ CHATBOT/
 │       ├── components/        # chat/, admin/, layout/
 │       ├── api/client.js      # axios + SSE stream helper
 │       └── store/authStore.js # Zustand — token en memoria
-├── docker-compose.yml
+├── schema.sql
 └── README.md
 ```
 
 ## Decisiones de arquitectura
 
-- **ChromaDB** sobre FAISS: soporta borrado por metadatos (`doc_id`) sin reconstruir el índice.
+- **PGVector sobre Supabase**: soporta borrado por metadatos (`doc_id`) y elimina la necesidad de una base de datos separada.
+- **Voyage AI `voyage-multilingual-2`**: modelo multilingüe optimizado para español, 50M tokens/mes gratis, 1024 dimensiones.
 - **SSE sobre WebSocket**: más simple para streaming unidireccional; funciona con `fetch` nativo.
 - **JWT en memoria (Zustand)**: el token del secretario nunca toca `localStorage` — se pierde al cerrar la pestaña, comportamiento correcto para un panel administrativo.
-- **Embeddings locales** (`all-MiniLM-L6-v2`): sin costo por embedding, funciona offline, suficiente para corpus de tamaño académico.
-- **Un solo worker Uvicorn**: evita condiciones de carrera en la escritura del vector store y el JSON de metadatos sin necesidad de un lock externo.
+- **Un solo worker Uvicorn**: evita condiciones de carrera en el vector store sin necesidad de un lock externo.

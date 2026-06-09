@@ -13,32 +13,23 @@ from app.admin.router import router as admin_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Pre-resuelve hostnames problemáticos en el arranque (cuando el DNS de Render
-    es más estable) y aplica dos estrategias distintas según la librería:
+    Pre-resuelve el hostname de la BD a IPv4 y lo inyecta como 'hostaddr'
+    en connect_args de SQLAlchemy/psycopg2.
 
-    • BD / psycopg2 (usa libpq en C, ignora socket de Python):
-      → Guarda la IPv4 en pipeline._resolved_db_ip para inyectarla como
-        'hostaddr' en connect_args de SQLAlchemy.  El hostname original se
-        mantiene en la URL para que SSL/SNI funcione con el Supabase Pooler.
-
-    • HuggingFace API / httpx (usa socket de Python):
-      → Parchea socket.getaddrinfo para devolver la IPv4 pre-resuelta.
-        httpx respeta el parche y además envía el hostname original como SNI
-        (lo toma de la URL, no del resultado DNS), así que HTTPS funciona.
+    psycopg2 usa libpq (C) que llama al resolver del OS e ignora el módulo
+    socket de Python. En Render el DNS falla con EAI_NONAME para el hostname
+    del Supabase Pooler. Pasar hostaddr evita el lookup; el hostname original
+    queda en la URL para SSL/SNI del pooler.
     """
     import socket
     import app.rag.pipeline as _pipeline
     from app.config import settings as _s
 
-    _original_getaddrinfo = socket.getaddrinfo
-    _overrides: dict = {}   # hostname → ipv4 para el parche de socket
-
-    # ── 1. BD: hostaddr para psycopg2/libpq ──────────────────────────────────
     try:
         raw = _s.database_url.strip().strip('"').strip("'")
         db_host = raw.split("@")[1].split(":")[0] if "@" in raw else ""
         if db_host:
-            res = _original_getaddrinfo(db_host, 5432, socket.AF_INET)
+            res = socket.getaddrinfo(db_host, 5432, socket.AF_INET)
             if res:
                 ipv4 = res[0][4][0]
                 _pipeline._resolved_db_ip = ipv4
@@ -46,37 +37,7 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"[STARTUP] Pre-resolución BD falló: {e}")
 
-    # ── 2. HuggingFace API: parche socket para httpx ──────────────────────────
-    _HF_HOST = "api-inference.huggingface.co"
-    try:
-        res = _original_getaddrinfo(_HF_HOST, 443, socket.AF_INET)
-        if res:
-            hf_ipv4 = res[0][4][0]
-            _overrides[_HF_HOST] = hf_ipv4
-            print(f"[STARTUP] HF API resuelta: {_HF_HOST} → {hf_ipv4}")
-    except Exception as e:
-        print(f"[STARTUP] Pre-resolución HF API falló: {e}")
-
-    # ── 3. Aplicar parche socket.getaddrinfo (solo para los hosts en _overrides) ─
-    if _overrides:
-        def _patched_getaddrinfo(h, p, family=0, type=0, proto=0, flags=0):
-            if h in _overrides:
-                port = p if p else 443
-                ip = _overrides[h]
-                return [
-                    (socket.AF_INET, socket.SOCK_STREAM, 6,  "", (ip, port)),
-                    (socket.AF_INET, socket.SOCK_DGRAM,  17, "", (ip, port)),
-                ]
-            return _original_getaddrinfo(h, p, family, type, proto, flags)
-
-        socket.getaddrinfo = _patched_getaddrinfo
-        print(f"[STARTUP] DNS cacheado para: {list(_overrides.keys())}")
-
     yield
-
-    # Restaurar al apagar
-    if _overrides:
-        socket.getaddrinfo = _original_getaddrinfo
 
 
 app = FastAPI(

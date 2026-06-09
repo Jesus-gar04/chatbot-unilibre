@@ -20,9 +20,13 @@ class Settings(BaseSettings):
     chunk_size: int = 512
     chunk_overlap: int = 64
     retrieval_k: int = 5
-    # Token de HuggingFace (gratis en huggingface.co → Settings → Access Tokens)
-    hf_api_key: str = ""
-    # True → usa fastembed local (Docker/dev). False → usa HF API (Render/prod)
+
+    # Voyage AI — https://dash.voyageai.com → API Keys (gratis: 50M tokens/mes)
+    # Modelo: voyage-multilingual-2 → español + inglés, 1024 dims
+    voyage_api_key: str = ""
+
+    # True → usa fastembed local (solo Docker/dev, requiere: pip install fastembed)
+    # False → usa Voyage AI (producción en Render)
     use_local_embeddings: bool = False
 
     # ── Supabase ──────────────────────────────────────────────────────────────

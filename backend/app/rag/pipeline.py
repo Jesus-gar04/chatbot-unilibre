@@ -1,5 +1,5 @@
 import json
-from typing import List, AsyncGenerator
+from typing import List, Optional, AsyncGenerator
 
 from langchain_community.vectorstores import PGVector
 from langchain.schema import Document, HumanMessage
@@ -7,20 +7,24 @@ from langchain.schema.embeddings import Embeddings
 
 from app.config import settings
 
-_embeddings = None
+_embeddings: Optional[Embeddings] = None
+_vector_store: Optional[PGVector] = None
 _resolved_db_ip: str = ""   # set by main.py lifespan after IPv4 lookup
 
 
-# ── Embeddings: dos implementaciones según el entorno ────────────────────────
+# ── Embeddings ───────────────────────────────────────────────────────────────
 #
-# USE_LOCAL_EMBEDDINGS=true  → _LocalEmbeddings (fastembed/ONNX, para Docker local)
-#                               Sin límite de red. Dev machine tiene RAM de sobra.
+# USE_LOCAL_EMBEDDINGS=true  → _LocalEmbeddings (fastembed/ONNX)
+#                               Requiere: pip install fastembed  (NO está en requirements.txt)
+#                               Solo para desarrollo local con Docker/mucha RAM.
 #
-# USE_LOCAL_EMBEDDINGS=false → _HFEmbeddings (HuggingFace Inference API)
-#                               Sin modelo local. Cabe en Render free tier 512 MB.
+# USE_LOCAL_EMBEDDINGS=false → _VoyageEmbeddings (Voyage AI API)
+#                               Modelo: voyage-multilingual-2 → español + inglés, 1024 dims
+#                               Gratis: 50M tokens/mes — https://dash.voyageai.com
+
 
 class _LocalEmbeddings(Embeddings):
-    """Embeddings locales con fastembed (ONNX). Úsalo en Docker/desarrollo."""
+    """Embeddings locales con fastembed (ONNX). Solo para desarrollo local."""
 
     def __init__(self, model_name: str = "BAAI/bge-small-en-v1.5"):
         from fastembed import TextEmbedding
@@ -33,37 +37,43 @@ class _LocalEmbeddings(Embeddings):
         return next(self._model.embed([text])).tolist()
 
 
-class _HFEmbeddings(Embeddings):
-    """Embeddings vía HuggingFace Inference API. Sin modelo local (Render/prod)."""
+class _VoyageEmbeddings(Embeddings):
+    """
+    Embeddings vía Voyage AI.
+    Modelo voyage-multilingual-2: español nativo, 1024 dims, 50M tokens/mes gratis.
+    Registrate en https://dash.voyageai.com para obtener una API key gratuita.
+    """
 
-    _URL = (
-        "https://api-inference.huggingface.co"
-        "/pipeline/feature-extraction"
-        "/sentence-transformers/all-MiniLM-L6-v2"
-    )
+    _URL = "https://api.voyageai.com/v1/embeddings"
+    _MODEL = "voyage-multilingual-2"
+    _BATCH = 128   # Voyage acepta hasta 128 textos por llamada
 
-    def __init__(self, api_key: str = ""):
+    def __init__(self, api_key: str):
         import httpx
-        self._client = httpx.Client(timeout=90.0)
-        self._headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+        self._client = httpx.Client(timeout=60.0)
+        self._headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
 
-    def _call(self, texts: List[str]) -> List[List[float]]:
+    def _call(self, texts: List[str], input_type: str) -> List[List[float]]:
         r = self._client.post(
             self._URL,
-            json={"inputs": texts, "options": {"wait_for_model": True}},
+            json={"input": texts, "model": self._MODEL, "input_type": input_type},
             headers=self._headers,
         )
         r.raise_for_status()
-        return r.json()
+        data = sorted(r.json()["data"], key=lambda x: x["index"])
+        return [item["embedding"] for item in data]
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
         result = []
-        for i in range(0, len(texts), 32):
-            result.extend(self._call(texts[i : i + 32]))
+        for i in range(0, len(texts), self._BATCH):
+            result.extend(self._call(texts[i : i + self._BATCH], "document"))
         return result
 
     def embed_query(self, text: str) -> List[float]:
-        return self._call([text])[0]
+        return self._call([text], "query")[0]
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -99,40 +109,54 @@ def _db_url() -> str:
 def get_embeddings() -> Embeddings:
     """
     Devuelve el proveedor de embeddings según USE_LOCAL_EMBEDDINGS:
-      True  → fastembed local (Docker/dev, sin límite de red)
-      False → HuggingFace API  (Render/prod, sin modelo local)
+      True  → fastembed local (solo Docker/dev, instalar manualmente)
+      False → Voyage AI API (producción, gratis, multilingüe)
     """
     global _embeddings
     if _embeddings is None:
         if settings.use_local_embeddings:
             _embeddings = _LocalEmbeddings()
         else:
-            _embeddings = _HFEmbeddings(api_key=settings.hf_api_key)
+            if not settings.voyage_api_key:
+                raise RuntimeError(
+                    "VOYAGE_API_KEY no está configurada. "
+                    "Regístrate gratis en https://dash.voyageai.com y añade la key al .env"
+                )
+            _embeddings = _VoyageEmbeddings(api_key=settings.voyage_api_key)
     return _embeddings
 
 
 def get_vector_store() -> PGVector:
     """
-    Crea una instancia de PGVector con NullPool para no mantener
-    conexiones inactivas en RAM (ideal para Render free tier 512 MB).
+    Devuelve la instancia de PGVector, creándola solo en la primera llamada.
 
-    Si _resolved_db_ip está cargado, se pasa como 'hostaddr' en connect_args.
-    Esto le dice a libpq que use esa IPv4 para la conexión TCP sin hacer DNS
-    lookup, mientras que el hostname original del URL se preserva para SSL SNI
-    — necesario para que el Supabase Pooler enrute la conexión correctamente.
+    Se usa NullPool para no mantener conexiones inactivas en RAM
+    (ideal para Render free tier 512 MB): cada operación de BD abre y cierra
+    su propia conexión TCP, pero el objeto PGVector se reutiliza entre requests
+    para evitar re-verificar las tablas de la colección en cada consulta.
+
+    Si _resolved_db_ip está cargado, se pasa como 'hostaddr' en connect_args
+    para saltarse el DNS lookup de libpq y preservar el hostname en la URL
+    para SSL/SNI del Supabase Pooler.
     """
+    global _vector_store
+    if _vector_store is not None:
+        return _vector_store
+
     from sqlalchemy.pool import NullPool
     engine_args: dict = {"poolclass": NullPool}
     if _resolved_db_ip:
         engine_args["connect_args"] = {"hostaddr": _resolved_db_ip}
         print(f"[DB] Conectando vía hostaddr={_resolved_db_ip} (DNS bypass, SNI preservado)")
-    return PGVector(
+
+    _vector_store = PGVector(
         connection_string=_db_url(),
         embedding_function=get_embeddings(),
         collection_name="rag_unilibre",
         pre_delete_collection=False,
         engine_args=engine_args,
     )
+    return _vector_store
 
 
 def get_llm():
@@ -153,7 +177,7 @@ def get_llm():
 
 # ── Vector store operations ──────────────────────────────────────────────────
 
-def add_documents_to_store(chunks: List[Document], doc_id: str):
+def add_documents_to_store(chunks: List[Document]):
     """Añade los chunks de un documento al índice vectorial en Supabase."""
     store = get_vector_store()
     store.add_documents(chunks)
@@ -192,7 +216,6 @@ def retrieve_context(query: str) -> List[Document]:
         store = get_vector_store()
         return store.similarity_search(query, k=settings.retrieval_k)
     except Exception as e:
-        # Log visible en la consola del servidor para diagnóstico
         print(f"[RAG ERROR] retrieve_context falló — {type(e).__name__}: {e}")
         return []
 
@@ -307,7 +330,6 @@ async def stream_rag_response(
         question=query,
     )
 
-    # Generar URLs de descarga para formatos recuperados
     formats = _build_formato_download_info(context_docs)
 
     llm = get_llm()
