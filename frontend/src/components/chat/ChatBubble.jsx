@@ -1,3 +1,5 @@
+import ReactMarkdown from 'react-markdown'
+
 export default function ChatBubble({ message }) {
   const isUser = message.role === 'user'
   const formats = message.formats || []
@@ -14,13 +16,27 @@ export default function ChatBubble({ message }) {
       <div className={`max-w-[85%] ${isUser ? 'items-end' : 'items-start'} flex flex-col gap-2`}>
         {/* Bubble */}
         <div
-          className={`px-4 py-3 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
+          className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${
             isUser
               ? 'bg-ul-700 text-white rounded-br-sm'
               : 'bg-white border border-gray-200 text-gray-800 rounded-bl-sm shadow-sm'
           }`}
         >
-          {message.content}
+          {isUser ? (
+            message.content
+          ) : (
+            <ReactMarkdown
+              components={{
+                p:      ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                ul:     ({ children }) => <ul className="list-disc list-inside mb-2 space-y-0.5">{children}</ul>,
+                ol:     ({ children }) => <ol className="list-decimal list-inside mb-2 space-y-0.5">{children}</ol>,
+                li:     ({ children }) => <li>{children}</li>,
+              }}
+            >
+              {message.content}
+            </ReactMarkdown>
+          )}
         </div>
 
         {/* Formatos descargables */}
