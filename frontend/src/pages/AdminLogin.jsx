@@ -44,11 +44,14 @@ export default function AdminLogin() {
 
           {/* ── Cabecera roja con escudo ── */}
           <div className="bg-ul-700 px-8 pt-8 pb-6 flex flex-col items-center gap-3">
-            <img
-              src="/logo.png"
-              alt="Escudo Universidad Libre"
-              className="w-24 h-24 object-contain drop-shadow-xl"
-            />
+            <div className="rounded-full p-1" style={{ background: 'rgba(255,255,255,0.12)', boxShadow: '0 0 0 3px rgba(255,255,255,0.18), 0 8px 24px rgba(0,0,0,0.45)' }}>
+              <img
+                src="/logo.png"
+                alt="Escudo Universidad Libre"
+                className="w-24 h-24 object-contain"
+                style={{ filter: 'drop-shadow(0 4px 12px rgba(0,0,0,0.5))' }}
+              />
+            </div>
             <div className="text-center">
               <p className="text-white text-sm font-bold tracking-wide leading-snug">
                 Universidad Libre

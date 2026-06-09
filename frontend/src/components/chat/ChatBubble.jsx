@@ -1,4 +1,36 @@
-import ReactMarkdown from 'react-markdown'
+function MiniMarkdown({ text }) {
+  if (!text) return null
+
+  return text.split('\n').map((line, i, arr) => {
+    if (!line.trim()) return <br key={i} />
+
+    const isBullet = /^[-*] /.test(line)
+    const raw = isBullet ? line.slice(2) : line
+
+    // Render **bold** spans inline
+    const parts = raw.split(/(\*\*[^*\n]+\*\*)/)
+    const inline = parts.map((p, j) =>
+      p.startsWith('**') && p.endsWith('**')
+        ? <strong key={j} className="font-semibold">{p.slice(2, -2)}</strong>
+        : p
+    )
+
+    if (isBullet) {
+      return (
+        <div key={i} className="flex gap-1.5 mt-0.5 first:mt-0">
+          <span className="shrink-0 text-gray-400 select-none">•</span>
+          <span>{inline}</span>
+        </div>
+      )
+    }
+
+    return (
+      <p key={i} className={i < arr.length - 1 ? 'mb-1.5' : ''}>
+        {inline}
+      </p>
+    )
+  })
+}
 
 export default function ChatBubble({ message }) {
   const isUser = message.role === 'user'
@@ -22,21 +54,10 @@ export default function ChatBubble({ message }) {
               : 'bg-white border border-gray-200 text-gray-800 rounded-bl-sm shadow-sm'
           }`}
         >
-          {isUser ? (
-            message.content
-          ) : (
-            <ReactMarkdown
-              components={{
-                p:      ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-                ul:     ({ children }) => <ul className="list-disc list-inside mb-2 space-y-0.5">{children}</ul>,
-                ol:     ({ children }) => <ol className="list-decimal list-inside mb-2 space-y-0.5">{children}</ol>,
-                li:     ({ children }) => <li>{children}</li>,
-              }}
-            >
-              {message.content}
-            </ReactMarkdown>
-          )}
+          {isUser
+            ? message.content
+            : <MiniMarkdown text={message.content} />
+          }
         </div>
 
         {/* Formatos descargables */}
